@@ -179,7 +179,7 @@
 
 - (void)drawKnob:(NSRect)inRect
 {
-	unsigned int	t_focus_ring_type;
+	unsigned int t_focus_ring_type = 0;
 
     if ( _sm_flags.removeFocusRingStyle )
 	{
