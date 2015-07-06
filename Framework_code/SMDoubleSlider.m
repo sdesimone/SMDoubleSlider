@@ -439,7 +439,7 @@ typedef			intptr_t		BindingIndex;
 
 - (void)setFloatLoValue:(float)aFloat
 {
-    [ [self cell] setFloatLoValue:aFloat ];
+    [ [self cell] setDoubleLoValue:aFloat ];
 }
 
 - (void)setDoubleLoValue:(double)aDouble
@@ -464,7 +464,7 @@ typedef			intptr_t		BindingIndex;
 
 - (float)floatLoValue
 {
-    return [ [self cell] floatLoValue ];
+    return [ [self cell] doubleLoValue ];
 }
 
 - (double)doubleLoValue

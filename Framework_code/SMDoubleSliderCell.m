@@ -18,41 +18,48 @@
 #import "SMDoubleSliderCell.h"
 #import "SMDoubleSlider.h"
 
-@interface SMDoubleSliderCell(_sm_Private)
-	// A private method to calculate the rectangle of the low knob.
-	- (NSRect)_sm_loKnobRect;
+@interface SMDoubleSliderCell ()
+
+    @property (nonatomic) BOOL trackingLoKnob;
+
+    - (NSRect)_sm_loKnobRect;
+
 @end
 
-@implementation SMDoubleSliderCell
+@implementation SMDoubleSliderCell {
 
-- (id)initWithCoder:(NSCoder *)aDecoder
-{
-    BOOL	tempBool;
+    double	_lowValue;
+    struct {
+        unsigned char	lockedSliders : 1;
+        unsigned char	mouseTrackingSwapped : 1;
+        unsigned char	removeFocusRingStyle : 1;
+    } _sm_flags;
+}
 
-    self = [ super initWithCoder:aDecoder ];
-
-    if ( nil != self )
-    {
-		if ( [ aDecoder allowsKeyedCoding ] )
+- (id)initWithCoder:(NSCoder *)aDecoder {
+    
+    BOOL tempBool;
+    if (self = [super initWithCoder:aDecoder]) {
+		if ([aDecoder allowsKeyedCoding])
 		{
-			_sm_loValue = [ aDecoder decodeDoubleForKey:@"loValue" ];
+			_lowValue = [ aDecoder decodeDoubleForKey:@"loValue" ];
 			tempBool = [ aDecoder decodeBoolForKey:@"lockedSliders" ];
 		}
 		else
 		{
-			[ aDecoder decodeValueOfObjCType:@encode(double) at:&_sm_loValue ];
+			[ aDecoder decodeValueOfObjCType:@encode(double) at:&_lowValue ];
 			[ aDecoder decodeValueOfObjCType:@encode(BOOL) at:&tempBool ];
 		}
-
+ 
 		_sm_flags.lockedSliders = tempBool;
 
 		// Make sure our value is between min and max.
-		if ( [ self minValue ] > _sm_loValue )
-			_sm_loValue = [ self minValue ];
-		if ( [ self maxValue ] < _sm_loValue )
-			_sm_loValue = [ self maxValue ];
+		if ( [ self minValue ] > _lowValue )
+			_lowValue = [ self minValue ];
+		if ( [ self maxValue ] < _lowValue )
+			_lowValue = [ self maxValue ];
 
-		_sm_flags.isTrackingLoKnob = YES;
+		self.trackingLoKnob = YES;
 	}
 	
     return self;
@@ -68,165 +75,130 @@
 
 	if ( [ aCoder allowsKeyedCoding ] )
 	{
-		[ aCoder encodeDouble:_sm_loValue forKey:@"loValue" ];
+		[ aCoder encodeDouble:_lowValue forKey:@"loValue" ];
 		[ aCoder encodeBool:tempBool forKey:@"lockedSliders" ];
 	}
 	else
 	{
-		[ aCoder encodeValueOfObjCType:@encode(double) at:&_sm_loValue ];
+		[ aCoder encodeValueOfObjCType:@encode(double) at:&_lowValue ];
 		[ aCoder encodeValueOfObjCType:@encode(BOOL) at:&tempBool ];
 	}
 }
 
-- (id)copyWithZone:(NSZone *)zone
-{
-    SMDoubleSliderCell *copy;
-
-    copy = [ super copyWithZone:zone ];
-
-    [ copy setDoubleLoValue:[ self doubleLoValue ] ];
-    [ copy setLockedSliders:[ self lockedSliders ] ];
-
+- (id)copyWithZone:(NSZone *)zone {
+    
+    SMDoubleSliderCell* copy = [ super copyWithZone:zone ];
+    [ copy setDoubleLoValue:[self doubleLoValue]];
+    [ copy setLockedSliders:[self lockedSliders]];
     return copy;
 }
 
-- (void)setMinValue:(double)aDouble
-{
-    // Make sure we check both lo and hi values.
+- (void)setMinValue:(double)aDouble {
+    
     if ( [ self doubleLoValue ] < aDouble )
         [ self setDoubleLoValue:aDouble ];
     if ( [ self doubleHiValue ] < aDouble )
         [ self setDoubleHiValue:aDouble ];
-
-    [ super setMinValue:aDouble ];
+    [super setMinValue:aDouble];
 }
 
-- (void)setMaxValue:(double)aDouble
-{
-    // Make sure we check both lo and hi values.
+- (void)setMaxValue:(double)aDouble {
+    
     if ( [ self doubleLoValue ] > aDouble )
         [ self setDoubleLoValue:aDouble ];
     if ( [ self doubleHiValue ] > aDouble )
         [ self setDoubleHiValue:aDouble ];
-
-    [ super setMaxValue:aDouble ];
+    [super setMaxValue:aDouble];
 }
 
-/*- (void)setShowsFirstResponder:(BOOL)inValue
-{
-    NSLog( @"%x -setShowsFirstResponder:%d (was %d) dir=%d", self, inValue, _cFlags.showsFirstResponder,
-                [ [ [ self controlView ] window ] keyViewSelectionDirection ] );
-    if ( inValue && !_cFlags.showsFirstResponder &&
-                [ [ [ self controlView ] window ] keyViewSelectionDirection ] != NSDirectSelection )
-    {
-        [ self setTrackingLoKnob:( [ [ [ self controlView ] window ] keyViewSelectionDirection ] ==
-                    NSSelectingNext ) ];
-    }
+- (double)valueToPercent:(double)value {
+    
+    return (value  - [self minValue])/ ([self maxValue] - [self minValue]);
+}
+- (void)drawBarInside:(NSRect)aRect flipped:(BOOL)flipped {
 
-    [ super setShowsFirstResponder:inValue ];
-}*/
+    [NSGraphicsContext saveGraphicsState];
+    
+    NSImage* knobImage = [NSImage imageNamed:@"slider-default7-handle"];
+    NSImage* fillImage = [NSImage imageNamed:@"slider-default7-fill"];
+    
+    NSImage* greyFillImage = [NSImage imageNamed:@"slider-default7-greyFill"];
+    NSImage* leftCapImage = [NSImage imageNamed:@"slider-default7-greyLeftCap"];
+    NSImage* rightCapImage = [NSImage imageNamed:@"slider-default7-greyRightCap"];
+    
+    CGRect bounds = aRect;
+    CGFloat value = [self valueToPercent:[self doubleHiValue]];
+    CGFloat lowValue = [self valueToPercent:[self doubleLoValue]];
+    
+    NSLog(@"KNOB %f", [knobImage size].width);
+    NSLog(@"KNOB %f", [knobImage size].height);
+    CGRect leftRect = CGRectMake([knobImage size].width / 2,
+                                 (bounds.size.height - [fillImage size].height) / 2 + bounds.origin.y,
+                                 lowValue * (bounds.size.width - [knobImage size].width),
+                                 [fillImage size].height);
 
-/*- (BOOL)acceptsFirstResponder
-{
-    BOOL		result;
+    CGFloat b = leftRect.origin.x + leftRect.size.width;
+    CGRect middleRect = CGRectMake(b,
+                                 (bounds.size.height - [fillImage size].height) / 2 + bounds.origin.y,
+                                 (value - lowValue) * (bounds.size.width - [knobImage size].width),
+                                 [fillImage size].height);
 
-    NSLog( @"%x -acceptsFirstResponder called", self );
-    result = [ super acceptsFirstResponder ];
-    if ( result && [ [ [ self controlView ] window ] keyViewSelectionDirection ] != NSDirectSelection )
-        [ self setTrackingLoKnob:( [ [ [ self controlView ] window ] keyViewSelectionDirection ] == NSSelectingNext ) ];
-
-    return result;
-}*/
+    CGFloat o = middleRect.origin.x + middleRect.size.width;
+    CGRect rightRect = CGRectMake(o,
+                                  (bounds.size.height - [fillImage size].height) / 2  + bounds.origin.y,
+                                  (1 - value) * (bounds.size.width - [knobImage size].width),
+                                  [fillImage size].height);
+    
+    if (rightRect.size.width < 0)
+        rightRect.size.width = 0;
+    
+    NSDrawThreePartImage(CGRectIntegral(leftRect), leftCapImage, greyFillImage, nil, !flipped, NSCompositeSourceOver, 1.0, YES);
+    [fillImage drawInRect:middleRect];
+    NSDrawThreePartImage(CGRectIntegral(rightRect), nil, greyFillImage, rightCapImage, !flipped, NSCompositeSourceOver, 1.0, YES);
+//
+    [NSGraphicsContext restoreGraphicsState];
+}
 
 - (void)drawKnob
 {
-    NSRect	loKnobRect;
-    double	saveValue = _value;
-    BOOL	savePressed = _scFlags.isPressed;
-
-    // Draw the lower knob first.
-    if ( !_sm_flags.mouseTrackingSwapped )
-        // If we're tracking the lo knob with the mouse, _value already has the lo knob value.
-        // Otherwise, we need to stuff the lo value into _value to calculate correctly.
-        _value = _sm_loValue;
-
-    // Figure out the focus ring style and pressed state of the low knob.
-    _sm_flags.removeFocusRingStyle = ( _cFlags.showsFirstResponder && ![ self trackingLoKnob ] );
-    _scFlags.isPressed = ( savePressed && [ self trackingLoKnob ] );
-
-    loKnobRect = [ self knobRectFlipped:[ [ self controlView ] isFlipped ] ];
-    [ self drawKnob:loKnobRect ];
-
-    // Now, draw the upper knob in the correct state.
-    if ( _sm_flags.mouseTrackingSwapped )
-        // If we're tracking the lo knob, the hi knob value is saved in _sm_saveValue.
-        _value = _sm_saveValue;
-    else
-        // Restore to proper position of hi knob.
-        _value = saveValue;
-
-    // Figure out the focus ring style and pressed state of the high knob.
-    _sm_flags.removeFocusRingStyle = ( _cFlags.showsFirstResponder && [ self trackingLoKnob ] );
-    _scFlags.isPressed = ( savePressed && ![ self trackingLoKnob ] );
-
-    [ super drawKnob ];
-
-    // Reset to whatever values we had at the beginning of this method.
-    _value = saveValue;
-    _scFlags.isPressed = savePressed;
-    _sm_flags.removeFocusRingStyle = NO;
+    NSRect loKnobRect = [self _sm_loKnobRect];
+    [self drawKnob:loKnobRect];
+    
+    [super drawKnob];
 }
 
 - (void)drawKnob:(NSRect)inRect
 {
-	unsigned int t_focus_ring_type = 0;
+    [NSGraphicsContext saveGraphicsState];
+    
+    NSImage* knobImage = [NSImage imageNamed:@"slider-default7-handle"];
+    NSSize knobSize = knobImage.size;
+    NSLog(@"size: %f", knobSize.width);
+    NSRect knobRect = (NSRect){ { inRect.origin.x - (inRect.size.width - knobSize.width) / 2},
+        { knobSize.width, inRect.size.height} };
+//    [knobImage drawInRect:inRect];
+    [knobImage drawInRect:knobRect
+             fromRect:NSZeroRect
+            operation:NSCompositeSourceOver
+             fraction:0.5];
 
-    if ( _sm_flags.removeFocusRingStyle )
-	{
-		if ( [ self respondsToSelector:@selector(focusRingType) ] )
-		{
-			t_focus_ring_type = [ self focusRingType ];
-			[ self setFocusRingType:NSFocusRingTypeNone ];
-		}
-
-		// This seems backwards, but the problem is that NSSliderCell has set the focus ring style,
-		// and we want to remove that style.  So, we pop the graphics state off the stack.
-        [ [ NSGraphicsContext currentContext ] restoreGraphicsState ];
-	}
-
-    [ super drawKnob:inRect ];
-
-    if ( _sm_flags.removeFocusRingStyle )
-    {
-		if ( [ self respondsToSelector:@selector(focusRingType) ] )
-		{
-			[ self setFocusRingType:t_focus_ring_type ];
-		}
-
-		// Reset the graphics context stack and add the correct focus ring style back in.
-		[ [ NSGraphicsContext currentContext ] saveGraphicsState ];
-		NSSetFocusRingStyle( NSFocusRingAbove );
-    }
+    [NSGraphicsContext restoreGraphicsState];
 }
 
 // Mouse tracking doesn't use the accessor methods for the value.
 // That means, we need to do some hocus pocus here to make it work right.
 - (BOOL)startTrackingAt:(NSPoint)startPoint inView:(NSView *)controlView
 {
-    NSRect		loKnobRect;
+    NSLog(@"Tracking Knob %@ (%f)", NSStringFromPoint(startPoint), _lowValue);
 
-    // Determine if we're tracking the low knob or not.
-    loKnobRect = [ self _sm_loKnobRect ];
-    if ( [ self isVertical ] )
-    {
-        if ( [ controlView isFlipped ] )
-            [ self setTrackingLoKnob:( startPoint.y > loKnobRect.origin.y ) ];
+    NSRect loKnobRect = [self _sm_loKnobRect];
+    if ([self isVertical]) {
+        if ([controlView isFlipped])
+            [self setTrackingLoKnob:(startPoint.y > loKnobRect.origin.y)];
         else
-            [ self setTrackingLoKnob:( startPoint.y < loKnobRect.origin.y +
+            [self setTrackingLoKnob:(startPoint.y < loKnobRect.origin.y +
                         loKnobRect.size.height ) ];
-    }
-    else
-    {
+    } else {
         NSRect hiKnobRect = [ self knobRectFlipped:[ [ self controlView ] isFlipped ] ];
         [self setTrackingLoKnob:( (startPoint.x - (loKnobRect.origin.x + loKnobRect.size.width) ) < (hiKnobRect.origin.x - startPoint.x) ) ];
     }
@@ -234,100 +206,74 @@
     // Make sure that the user hasn't jammed both knobs up against the minimum value.
     if ( [ self trackingLoKnob ] && NSEqualRects( loKnobRect,
                 [ self knobRectFlipped:[ controlView isFlipped ] ] ) )
-        [ self setTrackingLoKnob:( _sm_loValue > [ self minValue ] ) ];
+        [ self setTrackingLoKnob:( _lowValue > [ self minValue ] ) ];
 
     // Make sure that the entire lo knob gets erased if it's moved the first time.
-    if ( [ self trackingLoKnob ] )
-        [ controlView setNeedsDisplayInRect:loKnobRect ];
-
-    // Save the value of the hi knob.
-    _sm_saveValue = _value;
-
-    // The _value variable (NSSliderCell implementation without accessor method calls) is used to track
-    // any knob with the mouse.
-    // However, if the user is tracking the lo knob, we need to switch in our lo value for the knob.
-    _sm_flags.mouseTrackingSwapped = [ self trackingLoKnob ];
-    if ( _sm_flags.mouseTrackingSwapped )
-        _value = _sm_loValue;
-
-    return [ super startTrackingAt:startPoint inView:controlView ];
+    if ([self trackingLoKnob]) {
+        [controlView setNeedsDisplayInRect:loKnobRect];
+        return YES;
+    } else {
+        return [super startTrackingAt:startPoint inView:controlView];
+    }
 }
 
-- (BOOL)continueTracking:(NSPoint)lastPoint at:(NSPoint)currentPoint inView:(NSView *)controlView
-{
-    BOOL	result;
+- (double)locationToDouble:(NSPoint)location {
+    
+    double delta = [self knobIconDelta];
+    return (self.maxValue - self.minValue) * (location.x - delta/2) / ([self controlView].bounds.size.width - delta);
+}
 
-    result = [ super continueTracking:lastPoint at:currentPoint inView:controlView ];
+- (BOOL)continueTracking:(NSPoint)lastPoint at:(NSPoint)currentPoint inView:(NSView *)controlView {
+    
+    BOOL result = YES;
+    
+    double newValue = [self locationToDouble:currentPoint];
+    if ([self trackingLoKnob]) {
 
-    // NOTE: This doesn't seem to be a problem for continuous sliders, although I did think about that.
-    // If the super implementation of this method sent the action method, we'd be hosed because we're possibly
-    // changing the values below here.  However, Cocoa seems to send the action after this method is complete.
-    // That's exactly what we want. :)
-    if ( _sm_flags.mouseTrackingSwapped )
-    {
-        // Limit to maximum of hi knob value (saved in _sm_saveValue).
-        if ( _value > _sm_saveValue )
-            _value = _sm_saveValue;
+        [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
+        if (newValue < self.minValue || newValue >= self.doubleHiValue) {
+            if (newValue < self.minValue)
+                _lowValue = self.minValue;
+            if (newValue >= self.doubleHiValue)
+                _lowValue = self.doubleHiValue;
+            [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
+        } else {
+            self.doubleLoValue = newValue;
+        }
+        [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
+        return YES;
 
-		// Only update the bound controller if this slider is continuous
-		if ([self isContinuous])
-		{
-			[(SMDoubleSlider*)controlView updateBoundControllerLoValue:_value];
-		}
-    }
-    else
-    {
-        // Limit to minimum of lo knob value.
-        if ( _value < _sm_loValue )
-            _value = _sm_loValue;
-		
-		// Only update the bound controller if this slider is continuous
-		if ([self isContinuous])
-		{
-			[(SMDoubleSlider*)controlView updateBoundControllerHiValue:_value];
-		}
+    } else {
+        if (newValue < [self doubleLoValue]) {
+            self.doubleHiValue = self.doubleLoValue;
+            return YES;
+        }
+        result = [super continueTracking:currentPoint at:currentPoint inView:controlView];
     }
 
     return result;
 }
 
-- (void)stopTracking:(NSPoint)lastPoint at:(NSPoint)stopPoint inView:(NSView *)controlView mouseIsUp:(BOOL)flag
-{
-    if ( _sm_flags.mouseTrackingSwapped )
-    {
-        // If we were tracking the lo knob, stick the correct values into the correct places.
-        _sm_loValue = _value;
-        _value = _sm_saveValue;
-        _sm_flags.mouseTrackingSwapped = NO;
-        [ controlView setNeedsDisplayInRect:[ self _sm_loKnobRect ] ];
-		
-		// Update the bound controller whether the slider is continuous or not
-		[(SMDoubleSlider*)controlView updateBoundControllerLoValue:_sm_loValue];
-    }
-    else
-    {
-		// Update the bound controller whether the slider is continuous or not
-		[(SMDoubleSlider*)controlView updateBoundControllerHiValue:_value];
-    }
-
-    [ super stopTracking:lastPoint at:stopPoint inView:controlView mouseIsUp:flag ];
-}
+//- (void)stopTracking:(NSPoint)lastPoint at:(NSPoint)stopPoint inView:(NSView *)controlView mouseIsUp:(BOOL)flag
+//{
+//    [ super stopTracking:lastPoint at:stopPoint inView:controlView mouseIsUp:flag ];
+//}
 
 #pragma mark -
 
-- (BOOL)trackingLoKnob
-{
-    return _sm_flags.isTrackingLoKnob;
-}
-
-- (void)setTrackingLoKnob:(BOOL)inValue
-{
-    if ( _sm_flags.isTrackingLoKnob != inValue )
-    {
-        _sm_flags.isTrackingLoKnob = inValue;
-        [ (NSControl *)[ self controlView ] updateCell:self ];
-    }
-}
+//- (BOOL)trackingLoKnob
+//{
+//    return _sm_flags.isTrackingLoKnob;
+//}
+//
+//- (void)setTrackingLoKnob:(BOOL)inValue
+//{
+//    if ( _sm_flags.isTrackingLoKnob != inValue )
+//    {
+//        _sm_flags.isTrackingLoKnob = inValue;
+//        [ (NSControl *)[ self controlView ] updateCell:self ];
+//    }
+//}
 
 - (BOOL)lockedSliders
 {
@@ -349,36 +295,12 @@
 
 #pragma mark -
 
-- (NSString *)stringValue
-{
-    if ( [ self trackingLoKnob ] )
-        return [ self stringLoValue ];
-    else
-        return [ self stringHiValue ];
-}
-
-- (id)objectValue
-{
-    if ( [ self trackingLoKnob ] )
-        return [ self objectLoValue ];
-    else
-        return [ self objectHiValue ];
-}
-
 - (int)intValue
 {
     if ( [ self trackingLoKnob ] )
         return [ self intLoValue ];
     else
         return [ self intHiValue ];
-}
-
-- (float)floatValue
-{
-    if ( [ self trackingLoKnob ] )
-        return [ self floatLoValue ];
-    else
-        return [ self floatHiValue ];
 }
 
 - (double)doubleValue
@@ -389,22 +311,6 @@
         return [ self doubleHiValue ];
 }
 
-- (void)setStringValue:(NSString *)aString
-{
-    if ( [ self trackingLoKnob ] )
-        [ self setStringLoValue:aString ];
-    else
-        [ self setStringHiValue:aString ];
-}
-
-- (void)setObjectValue:(id)obj
-{
-    if ( [ self trackingLoKnob ] )
-        [ self setObjectLoValue:obj ];
-    else
-        [ self setObjectHiValue:obj ];
-}
-
 - (void)setIntValue:(int)anInt
 {
     if ( [ self trackingLoKnob ] )
@@ -413,85 +319,38 @@
         [ self setIntHiValue:anInt ];
 }
 
-- (void)setFloatValue:(float)aFloat
+- (void)setDoubleValue:(double)aFloat
 {
     if ( [ self trackingLoKnob ] )
-        [ self setFloatLoValue:aFloat ];
+        [ self setDoubleLoValue:aFloat ];
     else
-        [ self setFloatHiValue:aFloat ];
-}
-
-- (void)setDoubleValue:(double)aDouble
-{
-    if ( [ self trackingLoKnob ] )
-        [ self setDoubleLoValue:aDouble ];
-    else
-        [ self setDoubleHiValue:aDouble ];
+        [ self setDoubleHiValue:aFloat ];
 }
 
 #pragma mark -
 
-- (double)doubleHiValue
-{
-//    NSLog( @"SMDSCell -doubleHiValue called %g (%d)", [ super doubleValue ],
-//                _sm_flags.mouseTrackingSwapped );
-    if ( _sm_flags.mouseTrackingSwapped )
-        return _sm_saveValue;
-    else
+- (double)doubleHiValue {
+    
+//    if ( _sm_flags.mouseTrackingSwapped )
+//        return _sm_saveValue;
+//    else
         return [ super doubleValue ];
 }
 
-- (void)setDoubleHiValue:(double)aDouble
-{
-//    NSLog( @"SMDSCell -setDoubleHiValue:%g called (%d)", aDouble,
-//                _sm_flags.mouseTrackingSwapped );
-
-    // Limit to minimum of lo knob value.
+- (void)setDoubleHiValue:(double)aDouble {
+    
     if ( aDouble < [ self doubleLoValue ] )
         aDouble = [ self doubleLoValue ];
     if ( aDouble > [ self maxValue ] )
         aDouble = [ self maxValue ];
 
-    if ( _sm_flags.mouseTrackingSwapped )
-    {
-        _sm_saveValue = aDouble;
-        [ (NSControl *)[ self controlView ] updateCell:self ];
-    }
-    else
+//    if ( _sm_flags.mouseTrackingSwapped )
+//    {
+//        _sm_saveValue = aDouble;
+//        [ (NSControl *)[ self controlView ] updateCell:self ];
+//    }
+//    else
         [ super setDoubleValue:aDouble ];
-}
-
-- (id)objectHiValue
-{
-    return [ NSNumber numberWithDouble:[ self doubleHiValue ] ];
-}
-
-- (void)setObjectHiValue:(id)obj
-{
-    if ( [ obj respondsToSelector:@selector(doubleHiValue) ] )
-        [ self setDoubleHiValue:[ obj doubleHiValue ] ];
-    else if ( [ obj respondsToSelector:@selector(doubleValue) ] )
-        [ self setDoubleHiValue:[ obj doubleValue ] ];
-    else if ( [ obj respondsToSelector:@selector(floatValue) ] )
-        [ self setDoubleHiValue:[ obj floatValue ] ];
-    else if ( [ obj respondsToSelector:@selector(intValue) ] )
-        [ self setDoubleHiValue:[ obj intValue ] ];
-    else if ( [ obj respondsToSelector:@selector(stringValue) ] )
-        [ self setStringHiValue:[ obj stringValue ] ];
-	else
-		[ self setDoubleHiValue:0.0 ];
-}
-
-- (NSString *)stringHiValue
-{
-    return [ NSString stringWithFormat:@"%g", [ self doubleHiValue ] ];
-}
-
-- (void)setStringHiValue:(NSString *)aString
-{
-    NSParameterAssert( nil != aString );
-
-    [ self setDoubleHiValue:[ aString doubleValue ] ];
 }
 
 - (int)intHiValue
@@ -514,154 +373,42 @@
     [ self setDoubleHiValue:aFloat ];
 }
 
-/*- (void)takeIntHiValueFrom:(id)sender
-{
-    [ super takeIntValueFrom:sender ];
-}
-
-- (void)takeFloatHiValueFrom:(id)sender
-{
-    [ super takeFloatValueFrom:sender ];
-}
-
-- (void)takeDoubleHiValueFrom:(id)sender
-{
-    [ super takeDoubleValueFrom:sender ];
-}
-
-- (void)takeStringHiValueFrom:(id)sender
-{
-    [ super takeStringValueFrom:sender ];
-}
-
-- (void)takeObjectHiValueFrom:(id)sender
-{
-    [ super takeObjectValueFrom:sender ];
-}*/
-
 #pragma mark -
 
-- (double)doubleLoValue
-{
-//    NSLog( @"SMDSCell -doubleLoValue called %g (%d)", _sm_loValue, _sm_flags.mouseTrackingSwapped );
-    if ( _sm_flags.mouseTrackingSwapped )
-        return _value;
-    else
-        return _sm_loValue;
+- (double)doubleLoValue {
+    return _lowValue;
 }
 
-- (void)setDoubleLoValue:(double)aDouble
-{
-//    NSLog( @"SMDSCell -setDoubleLoValue:%g called (%d)", aDouble,
-//                _sm_flags.mouseTrackingSwapped );
+- (void)setDoubleLoValue:(double)aDouble {
+    
     if ( aDouble > [ self doubleHiValue ] )
         aDouble = [ self doubleHiValue ];
     if ( aDouble < [ self minValue ] )
         aDouble = [ self minValue ];
 
-    if ( _sm_flags.mouseTrackingSwapped )
-        [ super setDoubleValue:aDouble ];
-    else
-    {
-        _sm_loValue = aDouble;
-        [ (NSControl *)[ self controlView ] updateCell:self ];
-    }
+    _lowValue = aDouble;
+    [ (NSControl *)[ self controlView ] updateCell:self ];
 }
 
-- (id)objectLoValue
-{
-    return [ NSNumber numberWithDouble:[ self doubleLoValue ] ];
-}
-
-- (void)setObjectLoValue:(id)obj
-{
-    if ( [ obj respondsToSelector:@selector(doubleLoValue) ] )
-        [ self setDoubleLoValue:[ obj doubleLoValue ] ];
-    else if ( [ obj respondsToSelector:@selector(doubleValue) ] )
-        [ self setDoubleLoValue:[ obj doubleValue ] ];
-    else if ( [ obj respondsToSelector:@selector(floatValue) ] )
-        [ self setDoubleLoValue:[ obj floatValue ] ];
-    else if ( [ obj respondsToSelector:@selector(intValue) ] )
-        [ self setDoubleLoValue:[ obj intValue ] ];
-    else if ( [ obj respondsToSelector:@selector(stringValue) ] )
-        [ self setStringLoValue:[ obj stringValue ] ];
-	else
-        [ self setDoubleLoValue:0.0 ];
-}
-
-- (NSString *)stringLoValue
-{
-    return [ NSString stringWithFormat:@"%g", [ self doubleLoValue ] ];
-}
-
-- (void)setStringLoValue:(NSString *)aString
-{
-    NSParameterAssert( nil != aString );
-
-    [ self setDoubleLoValue:[ aString doubleValue ] ];
-}
-
-- (int)intLoValue
-{
+- (int)intLoValue {
     return (int)[ self doubleLoValue ];
 }
 
-- (void)setIntLoValue:(int)anInt
-{
-    [ self setDoubleLoValue:anInt ];
+- (void)setIntLoValue:(int)anInt {
+    [self setDoubleLoValue:anInt];
 }
-
-- (float)floatLoValue
-{
-    return (float)[ self doubleLoValue ];
-}
-
-- (void)setFloatLoValue:(float)aFloat
-{
-    [ self setDoubleLoValue:aFloat ];
-}
-
-/*- (void)takeIntLoValueFrom:(id)sender
-{
-    _sm_loValue = [ sender intValue ];
-    [ (NSControl *)[ self controlView ] updateCell:self ];
-}
-
-- (void)takeFloatLoValueFrom:(id)sender
-{
-    _sm_loValue = [ sender floatValue ];
-    [ (NSControl *)[ self controlView ] updateCell:self ];
-}
-
-- (void)takeDoubleLoValueFrom:(id)sender
-{
-    _sm_loValue = [ sender doubleValue ];
-    [ (NSControl *)[ self controlView ] updateCell:self ];
-}
-
-- (void)takeStringLoValueFrom:(id)sender
-{
-    _sm_loValue = [ [ sender stringValue ] doubleValue ];
-    [ (NSControl *)[ self controlView ] updateCell:self ];
-}
-
-- (void)takeObjectLoValueFrom:(id)sender
-{
-    [ self setObjectLoValue:[ sender objectValue ] ];
-}*/
 
 #pragma mark -
 
-- (NSRect)_sm_loKnobRect
-{
-    NSRect	loKnobRect;
-    double	saveValue;
+- (CGFloat)knobIconDelta {
+    NSImage* knobImage = [NSImage imageNamed:@"slider-default7-handle"];
+    return ([knobImage size].width / 2);
+}
 
-    // Adjust the current value of the slider, get the rectangle, then reset the current value.
-    saveValue = _value;
-    _value = _sm_loValue;
-    loKnobRect = [ self knobRectFlipped:[ [ self controlView ] isFlipped ] ];
-    _value = saveValue;
+- (NSRect)_sm_loKnobRect {
+
+    NSRect loKnobRect = [self knobRectFlipped:[[self controlView] isFlipped]];
+    loKnobRect.origin.x = _lowValue * ([self controlView].bounds.size.width - loKnobRect.size.width) / (self.maxValue - self.minValue);
 
     return loKnobRect;
 }
