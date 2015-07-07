@@ -174,13 +174,13 @@
     NSImage* knobImage = [NSImage imageNamed:@"slider-default7-handle"];
     NSSize knobSize = knobImage.size;
     NSLog(@"size: %f", knobSize.width);
-    NSRect knobRect = (NSRect){ { inRect.origin.x - (inRect.size.width - knobSize.width) / 2},
-        { knobSize.width, inRect.size.height} };
-//    [knobImage drawInRect:inRect];
-    [knobImage drawInRect:knobRect
-             fromRect:NSZeroRect
-            operation:NSCompositeSourceOver
-             fraction:0.5];
+    NSRect knobRect = (NSRect){ {
+            inRect.origin.x - (inRect.size.width - knobSize.width) / 2,
+            inRect.origin.y - (inRect.size.height - knobSize.height) / 2
+    },
+        { knobSize.width, inRect.size.height}
+    };
+    [knobImage drawInRect:knobRect];
 
     [NSGraphicsContext restoreGraphicsState];
 }
