@@ -29,68 +29,8 @@
 @implementation SMDoubleSliderCell {
 
     double	_lowValue;
-    struct {
-        unsigned char	lockedSliders : 1;
-        unsigned char	mouseTrackingSwapped : 1;
-        unsigned char	removeFocusRingStyle : 1;
-    } _sm_flags;
-}
-
-- (id)initWithCoder:(NSCoder *)aDecoder {
-    
-    BOOL tempBool;
-    if (self = [super initWithCoder:aDecoder]) {
-		if ([aDecoder allowsKeyedCoding])
-		{
-			_lowValue = [ aDecoder decodeDoubleForKey:@"loValue" ];
-			tempBool = [ aDecoder decodeBoolForKey:@"lockedSliders" ];
-		}
-		else
-		{
-			[ aDecoder decodeValueOfObjCType:@encode(double) at:&_lowValue ];
-			[ aDecoder decodeValueOfObjCType:@encode(BOOL) at:&tempBool ];
-		}
- 
-		_sm_flags.lockedSliders = tempBool;
-
-		// Make sure our value is between min and max.
-		if ( [ self minValue ] > _lowValue )
-			_lowValue = [ self minValue ];
-		if ( [ self maxValue ] < _lowValue )
-			_lowValue = [ self maxValue ];
-
-		self.trackingLoKnob = YES;
-	}
-	
-    return self;
-}
-
-- (void)encodeWithCoder:(NSCoder *)aCoder
-{
-    BOOL	tempBool;
-
-    [ super encodeWithCoder:aCoder ];
-
-	tempBool = _sm_flags.lockedSliders;
-
-	if ( [ aCoder allowsKeyedCoding ] )
-	{
-		[ aCoder encodeDouble:_lowValue forKey:@"loValue" ];
-		[ aCoder encodeBool:tempBool forKey:@"lockedSliders" ];
-	}
-	else
-	{
-		[ aCoder encodeValueOfObjCType:@encode(double) at:&_lowValue ];
-		[ aCoder encodeValueOfObjCType:@encode(BOOL) at:&tempBool ];
-	}
-}
-
-- (id)copyWithZone:(NSZone *)zone {
-    
-    SMDoubleSliderCell* copy = [ super copyWithZone:zone ];
-    [ copy setDoubleLoValue:[self doubleLoValue]];
-    [ copy setLockedSliders:[self lockedSliders]];
-    return copy;
+    double	_hiValue;
+    BOOL _tracking;
 }
 
 - (void)setMinValue:(double)aDouble {
@@ -113,8 +53,9 @@
 
 - (double)valueToPercent:(double)value {
     
-    return (value  - [self minValue])/ ([self maxValue] - [self minValue]);
+    return (value  - [self minValue]) / ([self maxValue] - [self minValue]);
 }
+
 - (void)drawBarInside:(NSRect)aRect flipped:(BOOL)flipped {
 
     [NSGraphicsContext saveGraphicsState];
@@ -130,8 +71,6 @@
     CGFloat value = [self valueToPercent:[self doubleHiValue]];
     CGFloat lowValue = [self valueToPercent:[self doubleLoValue]];
     
-    NSLog(@"KNOB %f", [knobImage size].width);
-    NSLog(@"KNOB %f", [knobImage size].height);
     CGRect leftRect = CGRectMake([knobImage size].width / 2,
                                  (bounds.size.height - [fillImage size].height) / 2 + bounds.origin.y,
                                  lowValue * (bounds.size.width - [knobImage size].width),
@@ -161,10 +100,9 @@
 
 - (void)drawKnob
 {
-    NSRect loKnobRect = [self _sm_loKnobRect];
-    [self drawKnob:loKnobRect];
-    
-    [super drawKnob];
+    [self drawKnob:[self _sm_loKnobRect]];
+    [self drawKnob:[self _sm_hiKnobRect]];
+
 }
 
 - (void)drawKnob:(NSRect)inRect
@@ -173,7 +111,6 @@
     
     NSImage* knobImage = [NSImage imageNamed:@"slider-default7-handle"];
     NSSize knobSize = knobImage.size;
-    NSLog(@"size: %f", knobSize.width);
     NSRect knobRect = (NSRect){ {
             inRect.origin.x - (inRect.size.width - knobSize.width) / 2,
             inRect.origin.y - (inRect.size.height - knobSize.height) / 2
@@ -189,32 +126,20 @@
 // That means, we need to do some hocus pocus here to make it work right.
 - (BOOL)startTrackingAt:(NSPoint)startPoint inView:(NSView *)controlView
 {
-    NSLog(@"Tracking Knob %@ (%f)", NSStringFromPoint(startPoint), _lowValue);
-
     NSRect loKnobRect = [self _sm_loKnobRect];
-    if ([self isVertical]) {
-        if ([controlView isFlipped])
-            [self setTrackingLoKnob:(startPoint.y > loKnobRect.origin.y)];
-        else
-            [self setTrackingLoKnob:(startPoint.y < loKnobRect.origin.y +
-                        loKnobRect.size.height ) ];
-    } else {
-        NSRect hiKnobRect = [ self knobRectFlipped:[ [ self controlView ] isFlipped ] ];
-        [self setTrackingLoKnob:( (startPoint.x - (loKnobRect.origin.x + loKnobRect.size.width) ) < (hiKnobRect.origin.x - startPoint.x) ) ];
-    }
+    NSRect hiKnobRect = [self _sm_hiKnobRect];
     
-    // Make sure that the user hasn't jammed both knobs up against the minimum value.
-    if ( [ self trackingLoKnob ] && NSEqualRects( loKnobRect,
-                [ self knobRectFlipped:[ controlView isFlipped ] ] ) )
-        [ self setTrackingLoKnob:( _lowValue > [ self minValue ] ) ];
-
+    [self setTrackingLoKnob:( (startPoint.x - (loKnobRect.origin.x + loKnobRect.size.width) ) < (hiKnobRect.origin.x - startPoint.x) ) ];
+    
     // Make sure that the entire lo knob gets erased if it's moved the first time.
     if ([self trackingLoKnob]) {
         [controlView setNeedsDisplayInRect:loKnobRect];
-        return YES;
     } else {
-        return [super startTrackingAt:startPoint inView:controlView];
+        [controlView setNeedsDisplayInRect:hiKnobRect];
     }
+    
+    return [super startTrackingAt:startPoint inView:controlView];
+    return YES;
 }
 
 - (double)locationToDouble:(NSPoint)location {
@@ -225,73 +150,28 @@
 
 - (BOOL)continueTracking:(NSPoint)lastPoint at:(NSPoint)currentPoint inView:(NSView *)controlView {
     
-    BOOL result = YES;
-    
+    NSRect loKnobRect = [self _sm_loKnobRect];
+    NSRect hiKnobRect = [self _sm_hiKnobRect];
+
     double newValue = [self locationToDouble:currentPoint];
-    if ([self trackingLoKnob]) {
 
-        [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
-        if (newValue < self.minValue || newValue >= self.doubleHiValue) {
-            if (newValue < self.minValue)
-                _lowValue = self.minValue;
-            if (newValue >= self.doubleHiValue)
-                _lowValue = self.doubleHiValue;
-            [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
-        } else {
-            self.doubleLoValue = newValue;
-        }
-        [controlView setNeedsDisplayInRect:[self _sm_loKnobRect]];
-        return YES;
-
-    } else {
-        if (newValue < [self doubleLoValue]) {
-            self.doubleHiValue = self.doubleLoValue;
-            return YES;
-        }
-        result = [super continueTracking:currentPoint at:currentPoint inView:controlView];
+    if (!_tracking && [self trackingLoKnob] && NSEqualRects(loKnobRect, hiKnobRect)) {
+        [self setTrackingLoKnob:lastPoint.x > currentPoint.x];
     }
+    _tracking = YES;
 
-    return result;
+    self.doubleValue = newValue;
+    
+    return [super continueTracking:currentPoint at:currentPoint inView:controlView];
 }
 
-//- (void)stopTracking:(NSPoint)lastPoint at:(NSPoint)stopPoint inView:(NSView *)controlView mouseIsUp:(BOOL)flag
-//{
-//    [ super stopTracking:lastPoint at:stopPoint inView:controlView mouseIsUp:flag ];
-//}
+- (void)stopTracking:(NSPoint)lastPoint at:(NSPoint)stopPoint inView:(NSView *)controlView mouseIsUp:(BOOL)flag
+{
+    _tracking = NO;
+    [ super stopTracking:lastPoint at:stopPoint inView:controlView mouseIsUp:flag ];
+}
 
 #pragma mark -
-
-//- (BOOL)trackingLoKnob
-//{
-//    return _sm_flags.isTrackingLoKnob;
-//}
-//
-//- (void)setTrackingLoKnob:(BOOL)inValue
-//{
-//    if ( _sm_flags.isTrackingLoKnob != inValue )
-//    {
-//        _sm_flags.isTrackingLoKnob = inValue;
-//        [ (NSControl *)[ self controlView ] updateCell:self ];
-//    }
-//}
-
-- (BOOL)lockedSliders
-{
-    return _sm_flags.lockedSliders;
-}
-
-- (void)setLockedSliders:(BOOL)inLocked
-{
-    if ( _sm_flags.lockedSliders != inLocked )
-    {
-        _sm_flags.lockedSliders = inLocked;
-
-        if ( inLocked )
-            [ self setDoubleLoValue:[ self doubleHiValue ] ];
-
-        [ (NSControl *)[ self controlView ] updateCell:self ];
-    }
-}
 
 #pragma mark -
 
@@ -305,6 +185,7 @@
 
 - (double)doubleValue
 {
+    NSLog(@"GETTING doubleValue (%@)", [self trackingLoKnob]?@"low":@"high");
     if ( [ self trackingLoKnob ] )
         return [ self doubleLoValue ];
     else
@@ -331,10 +212,8 @@
 
 - (double)doubleHiValue {
     
-//    if ( _sm_flags.mouseTrackingSwapped )
-//        return _sm_saveValue;
-//    else
-        return [ super doubleValue ];
+    return _hiValue;
+    
 }
 
 - (void)setDoubleHiValue:(double)aDouble {
@@ -344,13 +223,9 @@
     if ( aDouble > [ self maxValue ] )
         aDouble = [ self maxValue ];
 
-//    if ( _sm_flags.mouseTrackingSwapped )
-//    {
-//        _sm_saveValue = aDouble;
-//        [ (NSControl *)[ self controlView ] updateCell:self ];
-//    }
-//    else
-        [ super setDoubleValue:aDouble ];
+    _hiValue = aDouble;
+    [ (NSControl *)[ self controlView ] updateCell:self ];
+    return;
 }
 
 - (int)intHiValue
@@ -406,11 +281,19 @@
 }
 
 - (NSRect)_sm_loKnobRect {
-
+    
     NSRect loKnobRect = [self knobRectFlipped:[[self controlView] isFlipped]];
     loKnobRect.origin.x = _lowValue * ([self controlView].bounds.size.width - loKnobRect.size.width) / (self.maxValue - self.minValue);
-
+    
     return loKnobRect;
+}
+
+- (NSRect)_sm_hiKnobRect {
+    
+    NSRect hiKnobRect = [self knobRectFlipped:[[self controlView] isFlipped]];
+    hiKnobRect.origin.x = _hiValue * ([self controlView].bounds.size.width - hiKnobRect.size.width) / (self.maxValue - self.minValue);
+    
+    return hiKnobRect;
 }
 
 @end

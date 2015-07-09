@@ -249,6 +249,14 @@ typedef			intptr_t		BindingIndex;
 
 #pragma mark -
 
+- (instancetype)initWithFrame:(NSRect)frameRect {
+    
+    if (self = [super initWithFrame:frameRect]) {
+        self.doubleHiValue = 100;
+    }
+    return self;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // A view must know how to archive and unarchive itself in order to be placed in a custom
 // Interface Builder palette.
